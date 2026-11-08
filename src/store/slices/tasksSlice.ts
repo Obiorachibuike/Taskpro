@@ -1,0 +1,24 @@
+import { createAsyncThunk, createSlice, type PayloadAction } from '@reduxjs/toolkit';
+import { TaskRepository } from '../../database/repositories/taskRepository';
+import type { Task, TaskFilters, TaskInput } from '../../types';
+import type { RootState } from '..';
+import { cancelTaskReminder, notifyTaskCompleted, scheduleTaskReminder, scheduleUpcomingDeadline } from '../../services/notifications/notificationService';
+
+const repository=new TaskRepository();
+export const loadTasks=createAsyncThunk('tasks/load',async({userId,filters}:{userId:string;filters?:TaskFilters})=>repository.list(userId,{...filters,includeArchived:true,sort:'position'}));
+export const createTask=createAsyncThunk('tasks/create',async({userId,input,reminder}:{userId:string;input:TaskInput;reminder?:Date|null},{getState})=>{const task=await repository.create(userId,input);const preferences=(getState() as RootState).ui.notificationPreferences;if(preferences.reminders&&reminder!==null&&(reminder||task.dueDate))await scheduleTaskReminder(task,reminder??undefined);if(preferences.deadlines&&reminder!==null)await scheduleUpcomingDeadline(task);return task;});
+export const updateTask=createAsyncThunk('tasks/update',async({id,input,reminder}:{id:string;input:Partial<TaskInput>;reminder?:Date|null},{getState})=>{const preferences=(getState() as RootState).ui.notificationPreferences;const previous=await repository.get(id);const task=await repository.update(id,input);if(reminder===null||!preferences.reminders)await cancelTaskReminder(id);else await scheduleTaskReminder(task,reminder??undefined);if(preferences.deadlines&&reminder!==null)await scheduleUpcomingDeadline(task);if(preferences.completion&&previous?.status!=='completed'&&task.status==='completed')await notifyTaskCompleted(task);return task;});
+export const toggleTask=createAsyncThunk('tasks/toggle',async({task,completed}:{task:Task;completed:boolean},{getState})=>{const next=await repository.setCompleted(task.id,completed);if(completed){await cancelTaskReminder(task.id);if((getState() as RootState).ui.notificationPreferences.completion)await notifyTaskCompleted(next);}return next;});
+export const deleteTask=createAsyncThunk('tasks/delete',async(id:string)=>{await cancelTaskReminder(id);await repository.remove(id);return id;});
+export const duplicateTask=createAsyncThunk('tasks/duplicate',async(id:string)=>repository.duplicate(id));
+export const archiveTask=createAsyncThunk('tasks/archive',async({id,archived}:{id:string;archived:boolean})=>repository.update(id,{archived}));
+export const reorderTasks=createAsyncThunk('tasks/reorder',async({userId,ids}:{userId:string;ids:string[]})=>{await repository.reorder(userId,ids);return ids;});
+interface State{items:Task[];filters:TaskFilters;loading:boolean;error:string|null;mutationId:number}
+const initialState:State={items:[],filters:{sort:'deadline'},loading:false,error:null,mutationId:0};
+const slice=createSlice({name:'tasks',initialState,reducers:{setFilters(state,action:PayloadAction<TaskFilters>){state.filters={...state.filters,...action.payload};},resetFilters(state){state.filters={sort:'deadline'};},optimisticReorder(state,action:PayloadAction<string[]>){const positions=new Map(action.payload.map((id,index)=>[id,index]));state.items=state.items.map(task=>positions.has(task.id)?{...task,position:positions.get(task.id)!}:task);}},extraReducers:(builder)=>{
+ builder.addCase(loadTasks.pending,state=>{state.loading=true;state.error=null;}).addCase(loadTasks.fulfilled,(state,action)=>{state.items=action.payload;state.loading=false;}).addCase(loadTasks.rejected,(state,action)=>{state.loading=false;state.error=action.error.message??'Could not load tasks';});
+ builder.addCase(createTask.fulfilled,(state,action)=>{state.items.unshift(action.payload);state.mutationId++;}).addCase(updateTask.fulfilled,(state,action)=>{const i=state.items.findIndex(t=>t.id===action.payload.id);if(i>=0)state.items[i]=action.payload;else state.items.push(action.payload);state.mutationId++;}).addCase(toggleTask.fulfilled,(state,action)=>{const i=state.items.findIndex(t=>t.id===action.payload.id);if(i>=0)state.items[i]=action.payload;state.mutationId++;}).addCase(deleteTask.fulfilled,(state,action)=>{state.items=state.items.filter(t=>t.id!==action.payload);state.mutationId++;}).addCase(duplicateTask.fulfilled,(state,action)=>{state.items.unshift(action.payload);state.mutationId++;}).addCase(archiveTask.fulfilled,(state,action)=>{const i=state.items.findIndex(t=>t.id===action.payload.id);if(i>=0)state.items[i]=action.payload;state.mutationId++;});
+ for(const thunk of [createTask,updateTask,toggleTask,deleteTask,duplicateTask,archiveTask])builder.addCase(thunk.rejected,(state,action)=>{state.error=action.error.message??'Task operation failed';});
+}});
+export const {setFilters,resetFilters,optimisticReorder}=slice.actions;
+export default slice.reducer;

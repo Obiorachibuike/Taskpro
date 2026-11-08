@@ -1,0 +1,1 @@
+module.exports={preset:'ts-jest',testEnvironment:'node',testTimeout:180000,setupFilesAfterEnv:['<rootDir>/init.ts'],testMatch:['<rootDir>/**/*.e2e.ts'],reporters:['detox/runners/jest/reporter'],globalSetup:'detox/runners/jest/globalSetup',globalTeardown:'detox/runners/jest/globalTeardown'};

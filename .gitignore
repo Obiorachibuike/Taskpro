@@ -1,0 +1,12 @@
+node_modules/
+.expo/
+dist/
+coverage/
+android/
+ios/
+*.log
+.env
+.env.local
+*.jks
+*.keystore
+.detoxrc.json

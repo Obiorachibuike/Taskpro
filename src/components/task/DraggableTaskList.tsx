@@ -1,0 +1,14 @@
+import React,{useState} from 'react';
+import { StyleSheet,View } from 'react-native';
+import { Gesture,GestureDetector } from 'react-native-gesture-handler';
+import Animated,{runOnJS,useAnimatedStyle,useSharedValue,withSpring} from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
+import type { Task } from '../../types';
+import { TaskCard } from './TaskCard';
+import { useAppDispatch,useAppSelector } from '../../hooks/store';
+import { archiveTask,deleteTask,duplicateTask,optimisticReorder,reorderTasks,toggleTask } from '../../store/slices/tasksSlice';
+import { useTheme } from '../../theme';
+const ROW_HEIGHT=96;
+export function DraggableTaskList({tasks}:{tasks:Task[]}){const[active,setActive]=useState<number|null>(null);const[ordered,setOrdered]=useState<Task[]>(tasks);const dispatch=useAppDispatch();const userId=useAppSelector(s=>s.auth.user?.id);React.useEffect(()=>setOrdered(tasks),[tasks]);function move(from:number,to:number){const next=[...ordered];const[item]=next.splice(from,1);if(!item)return;next.splice(Math.max(0,Math.min(next.length,to)),0,item);setOrdered(next);const ids=next.map(t=>t.id);dispatch(optimisticReorder(ids));if(userId)void dispatch(reorderTasks({userId,ids}));}return <View style={styles.list}>{ordered.map((task,index)=><DraggableRow key={task.id} index={index} active={active===index} setActive={setActive} onMove={to=>move(index,to)}><TaskCard task={task} onToggle={()=>void dispatch(toggleTask({task,completed:task.status!=='completed'}))} onDelete={()=>void dispatch(deleteTask(task.id))} onDuplicate={()=>void dispatch(duplicateTask(task.id))} onArchive={()=>void dispatch(archiveTask({id:task.id,archived:!task.archived}))}/></DraggableRow>)}</View>;}
+function DraggableRow({children,index,active,setActive,onMove}:{children:React.ReactNode;index:number;active:boolean;setActive:(index:number|null)=>void;onMove:(to:number)=>void}){const{colors}=useTheme();const y=useSharedValue(0);const longPress=Gesture.LongPress().minDuration(250).onStart(()=>{runOnJS(setActive)(index);});const pan=Gesture.Pan().enabled(active).onUpdate(event=>{y.value=event.translationY;}).onEnd(event=>{const target=index+Math.round(event.translationY/ROW_HEIGHT);y.value=withSpring(0);runOnJS(onMove)(target);runOnJS(setActive)(null);}).onFinalize(()=>{if(!active){y.value=0;}});const style=useAnimatedStyle(()=>({transform:[{translateY:y.value},{scale:active?1.02:1}],zIndex:active?20:0,shadowOpacity:active?0.18:0}));return <GestureDetector gesture={Gesture.Simultaneous(longPress,pan)}><Animated.View style={style}><View pointerEvents="none" style={[styles.handle,{backgroundColor:colors.surfaceSecondary}]}><Ionicons name="reorder-three" size={21} color={colors.secondary}/></View>{children}</Animated.View></GestureDetector>;}
+const styles=StyleSheet.create({list:{padding:20,paddingBottom:110},handle:{position:'absolute',right:9,bottom:18,zIndex:2,borderRadius:8,padding:0}});

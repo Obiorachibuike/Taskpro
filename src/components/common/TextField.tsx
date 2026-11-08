@@ -1,0 +1,5 @@
+import React,{forwardRef} from 'react';
+import { StyleSheet,Text,TextInput,View,type TextInputProps } from 'react-native';
+import { useTheme } from '../../theme';
+export const TextField=forwardRef<TextInput,TextInputProps&{label:string;error?:string}>(function TextField({label,error,style,multiline,...props},ref){const{colors}=useTheme();return <View style={styles.wrap}><Text style={[styles.label,{color:colors.secondary}]}>{label}</Text><TextInput ref={ref} accessibilityLabel={label} placeholderTextColor={colors.secondary} multiline={multiline} style={[styles.input,{backgroundColor:colors.surface,color:colors.text,borderColor:error?colors.danger:colors.border},multiline&&styles.multiline,style]} {...props}/>{error?<Text style={{color:colors.danger,fontSize:12}}>{error}</Text>:null}</View>;});
+const styles=StyleSheet.create({wrap:{gap:7},label:{fontSize:13,fontWeight:'600'},input:{borderWidth:1,borderRadius:14,paddingHorizontal:15,minHeight:50,fontSize:16},multiline:{minHeight:110,paddingTop:14,textAlignVertical:'top'}});
