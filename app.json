@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "TaskPro Mobile",
+    "slug": "taskpro-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "taskpro",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "backgroundColor": "#F7F8FA",
+    "splash": { "backgroundColor": "#2563EB", "resizeMode": "contain" },
+    "ios": { "supportsTablet": true, "bundleIdentifier": "com.taskpro.mobile" },
+    "android": {
+      "package": "com.taskpro.mobile",
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": ["POST_NOTIFICATIONS", "SCHEDULE_EXACT_ALARM", "VIBRATE"]
+    },
+    "plugins": [
+      ["expo-router", { "origin": "https://taskpro.local" }],
+      "expo-sqlite",
+      "expo-secure-store",
+      ["expo-notifications", { "color": "#2563EB" }],
+      ["expo-background-task", { "tasks": ["TASKPRO_BACKGROUND_SYNC"] }]
+    ],
+    "extra": { "apiUrl": "http://10.0.2.2:4000" },
+    "experiments": { "typedRoutes": true }
+  }
+}

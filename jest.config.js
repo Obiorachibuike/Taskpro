@@ -1,0 +1,14 @@
+module.exports={
+  preset:'jest-expo',
+  setupFilesAfterEnv:['<rootDir>/src/tests/setup.ts'],
+  testMatch:['<rootDir>/src/tests/**/*.test.ts','<rootDir>/src/tests/**/*.test.tsx'],
+  collectCoverageFrom:[
+    'src/store/selectors/**/*.ts','src/services/synchronization/{conflict,retry,engine}.ts','src/services/notifications/notificationService.ts',
+    'src/utils/{date,validation}.ts','src/database/migrations/**/*.ts',
+    'src/database/repositories/**/*.ts'
+  ],
+  coveragePathIgnorePatterns:['node_modules'],
+  coverageReporters:['text','lcov','html','json-summary'],
+  clearMocks:true,
+  moduleNameMapper:{'^immer$':'<rootDir>/node_modules/immer/dist/cjs/index.js','^react-redux$':'<rootDir>/node_modules/react-redux/dist/cjs/index.js'},
+};

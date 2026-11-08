@@ -1,0 +1,16 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { combineReducers,configureStore } from '@reduxjs/toolkit';
+import { FLUSH,PAUSE,PERSIST,persistReducer,persistStore,PURGE,REGISTER,REHYDRATE } from 'redux-persist';
+import auth from './slices/authSlice';
+import tasks from './slices/tasksSlice';
+import projects from './slices/projectsSlice';
+import categories from './slices/categoriesSlice';
+import reminders from './slices/remindersSlice';
+import ui from './slices/uiSlice';
+import sync from './slices/syncSlice';
+import connectivity from './slices/connectivitySlice';
+const rootReducer=combineReducers({auth,tasks,projects,categories,reminders,ui:persistReducer({key:'ui',storage:AsyncStorage,whitelist:['theme','haptics','notificationPreferences']},ui),sync,connectivity});
+export const store=configureStore({reducer:rootReducer,middleware:getDefault=>getDefault({serializableCheck:{ignoredActions:[FLUSH,PAUSE,PERSIST,PURGE,REGISTER,REHYDRATE]}})});
+export const persistor=persistStore(store);
+export type RootState=ReturnType<typeof store.getState>;
+export type AppDispatch=typeof store.dispatch;

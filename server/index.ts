@@ -1,0 +1,31 @@
+import 'dotenv/config';
+import express,{type NextFunction,type Request,type Response} from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { Pool } from 'pg';
+import { z } from 'zod';
+import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const app=express();app.use(helmet());app.use(cors({origin:process.env.CORS_ORIGIN?.split(',')??true}));app.use(express.json({limit:'1mb'}));
+const pool=new Pool({connectionString:process.env.DATABASE_URL,max:10,ssl:process.env.DATABASE_SSL==='true'?{rejectUnauthorized:true}:undefined});
+if(!process.env.JWT_SECRET||process.env.JWT_SECRET.length<32)throw new Error('JWT_SECRET must contain at least 32 characters');
+const jwtSecret: string=process.env.JWT_SECRET;
+const authSchema=z.object({email:z.string().email().max(254),password:z.string().min(8).max(128),name:z.string().trim().min(1).max(100).optional()});
+type AuthRequest=Request&{userId?:string};
+function issue(user:{id:string;email:string;name:string;created_at:string}){return{user:{id:user.id,email:user.email,name:user.name,createdAt:user.created_at},token:jwt.sign({sub:user.id},jwtSecret,{expiresIn:'30d'})};}
+async function authenticate(req:AuthRequest,res:Response,next:NextFunction){try{const token=req.headers.authorization?.replace(/^Bearer /,'');if(!token)return res.sendStatus(401);const decoded=jwt.verify(token,jwtSecret) as jwt.JwtPayload;if(!decoded.sub)return res.sendStatus(401);req.userId=decoded.sub;next();}catch{return res.sendStatus(401);}}
+app.get('/health',async(_req,res)=>{await pool.query('SELECT 1');res.json({ok:true});});
+app.post('/auth/register',async(req,res)=>{const value=authSchema.parse(req.body);if(!value.name)return res.status(400).json({error:'Name is required'});const hash=await bcrypt.hash(value.password,12);try{const result=await pool.query('INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,$3,$4) RETURNING id,email,name,created_at',[randomUUID(),value.email.toLowerCase(),value.name,hash]);return res.status(201).json(issue(result.rows[0]));}catch(error){if((error as {code?:string}).code==='23505')return res.status(409).json({error:'An account with this email already exists'});throw error;}});
+app.post('/auth/login',async(req,res)=>{const value=authSchema.parse(req.body);const result=await pool.query('SELECT * FROM users WHERE email=$1',[value.email.toLowerCase()]);const user=result.rows[0];if(!user||!await bcrypt.compare(value.password,user.password_hash))return res.status(401).json({error:'Invalid email or password'});res.json(issue(user));});
+app.post('/auth/forgot-password',async(req,res)=>{const email=z.string().email().parse(req.body.email);/* Always use the same response to avoid account enumeration. Delivery is configured by the deployment. */await pool.query('SELECT id FROM users WHERE email=$1',[email.toLowerCase()]);res.status(202).json({accepted:true});});
+app.post('/sync/push',authenticate,async(req:AuthRequest,res)=>{const operation=req.body.operation;const valid=z.object({id:z.string().uuid(),entity:z.enum(['task','project','category']),entityId:z.string().uuid(),operation:z.enum(['upsert','delete']),payload:z.string()}).parse(operation);const payload=JSON.parse(valid.payload) as Record<string,unknown>;if(payload.id!==valid.entityId||payload.userId!==req.userId)return res.status(400).json({error:'Operation owner or id mismatch'});const client=await pool.connect();try{await client.query('BEGIN');const processed=await client.query('SELECT response FROM processed_operations WHERE id=$1 AND user_id=$2',[valid.id,req.userId]);if(processed.rows[0]){await client.query('COMMIT');return res.json(processed.rows[0].response);}const current=await client.query('SELECT version,updated_at FROM sync_records WHERE user_id=$1 AND entity=$2 AND id=$3 FOR UPDATE',[req.userId,valid.entity,valid.entityId]);const remote=current.rows[0];const version=Number(payload.version??1);if(remote&&version<=remote.version){const response={accepted:false,version:remote.version};await client.query('INSERT INTO processed_operations(id,user_id,response) VALUES($1,$2,$3)',[valid.id,req.userId,response]);await client.query('COMMIT');return res.status(409).json(response);}const acceptedVersion=Math.max(version,Number(remote?.version??0)+1);const updatedAt=new Date();const deletedAt=valid.operation==='delete'?new Date(String(payload.deletedAt??Date.now())):null;await client.query(`INSERT INTO sync_records(user_id,entity,id,payload,version,updated_at,deleted_at) VALUES($1,$2,$3,$4,$5,$6,$7) ON CONFLICT(user_id,entity,id) DO UPDATE SET payload=excluded.payload,version=excluded.version,updated_at=excluded.updated_at,deleted_at=excluded.deleted_at`,[req.userId,valid.entity,valid.entityId,{...payload,userId:req.userId,entity:valid.entity,version:acceptedVersion},acceptedVersion,updatedAt,deletedAt]);const response={accepted:true,version:acceptedVersion};await client.query('INSERT INTO processed_operations(id,user_id,response) VALUES($1,$2,$3)',[valid.id,req.userId,response]);await client.query('COMMIT');res.json(response);}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}});
+app.get('/sync/pull',authenticate,async(req:AuthRequest,res)=>{const cursor=typeof req.query.cursor==='string'&&req.query.cursor?req.query.cursor:null;const result=await pool.query(`SELECT payload,updated_at FROM sync_records WHERE user_id=$1 AND ($2::timestamptz IS NULL OR updated_at>$2::timestamptz) ORDER BY updated_at,id LIMIT 500`,[req.userId,cursor]);const records=result.rows.map(row=>row.payload);const last=result.rows.at(-1);res.json({records,cursor:last?.updated_at??cursor});});
+app.use((error:unknown,_req:Request,res:Response,_next:NextFunction)=>{if(error instanceof z.ZodError)return res.status(400).json({error:'Invalid request',issues:error.issues});console.error(error);res.status(500).json({error:'Internal server error'});});
+const port=Number(process.env.PORT??4000);
+export async function start(){await pool.query(readFileSync(join(__dirname,'schema.sql'),'utf8'));return app.listen(port,'0.0.0.0',()=>console.log(`TaskPro API listening on ${port}`));}
+if(require.main===module)void start();
+export{app,pool};

@@ -1,0 +1,7 @@
+import React from 'react';
+import { ActivityIndicator,Pressable,StyleSheet,Text,type ViewStyle } from 'react-native';
+import * as Haptics from 'expo-haptics';
+import { useTheme } from '../../theme';
+import { useAppSelector } from '../../hooks/store';
+export function Button({title,onPress,variant='primary',loading=false,disabled=false,icon,style,testID}:{title:string;onPress:()=>void;variant?:'primary'|'secondary'|'danger'|'ghost';loading?:boolean;disabled?:boolean;icon?:React.ReactNode;style?:ViewStyle;testID?:string}){const{colors}=useTheme();const haptics=useAppSelector(s=>s.ui.haptics);const background=variant==='primary'?colors.primary:variant==='danger'?colors.danger:variant==='secondary'?colors.surfaceSecondary:'transparent';const foreground=variant==='primary'||variant==='danger'?'#FFFFFF':colors.text;return <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={title} accessibilityState={{disabled:disabled||loading,busy:loading}} onPress={()=>{if(haptics)void Haptics.selectionAsync();onPress();}} disabled={disabled||loading} style={({pressed})=>[styles.button,{backgroundColor:background,opacity:disabled?0.5:pressed?0.75:1},style]}>{loading?<ActivityIndicator color={foreground}/>:<>{icon}<Text style={[styles.text,{color:foreground}]}>{title}</Text></>}</Pressable>;}
+const styles=StyleSheet.create({button:{minHeight:52,borderRadius:15,paddingHorizontal:18,alignItems:'center',justifyContent:'center',flexDirection:'row',gap:8},text:{fontWeight:'700',fontSize:16}});
